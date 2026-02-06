@@ -8,6 +8,10 @@
   },
   "ownerUsername": "your_minecraft_username",
   "initialGoal": "Collect wood and stay safe.",
+  "autonomy": {
+    "enabled": true,
+    "goalMode": "auto"
+  },
   "loopIntervalMs": 4500,
   "maxActionsPerTick": 3,
   "chatCooldownMs": 4000,

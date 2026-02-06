@@ -18,6 +18,7 @@ If the current provider fails, it falls back to the next one automatically.
 3. Edit `config/config.local.json`:
    - Set `ownerUsername`.
    - Set `minecraft.host` / `minecraft.port` / `minecraft.version` / `minecraft.auth`.
+   - Set `autonomy.enabled` and `autonomy.goalMode`.
    - In `llm.providerOrder`, keep your preferred API order.
    - Add your real key(s) under `llm.openrouter.apiKey`, `llm.gemini.apiKey`, or `llm.openai.apiKey`.
 4. Install deps: `npm install`
@@ -38,23 +39,11 @@ If the current provider fails, it falls back to the next one automatically.
 - Keep `config/config.example.json` with placeholders only.
 - Run `npm run scan:secrets` before commit.
 
-If a key was already committed:
-1. Revoke/rotate the key now.
-2. Rewrite history before making repo public.
-
-Small repo reset:
-```bash
-git checkout --orphan clean-main
-git add -A
-git commit -m "Clean history without secrets"
-git branch -M main
-git push --force-with-lease origin main
-```
-
 ## Project layout
 
 - `config/config.example.json` unified config template
 - `config/config.local.json` local runtime config (ignored by git)
+- `data/waypoints.json` local waypoint memory (ignored by git)
 - `src/index.js` main runtime loop
 - `src/config.js` config loader and normalization
 - `src/llm/client.js` provider failover client (OpenRouter/Gemini/OpenAI compatible)
@@ -70,5 +59,36 @@ Use these from the owner username configured in `config/config.local.json`:
 - `!alex pause`
 - `!alex resume`
 - `!alex goal <text>`
+- `!alex mission <text>`
+- `!alex auto on|off`
+- `!alex mode auto|manual`
+- `!alex wp set <name>`
+- `!alex wp goto <name>`
+- `!alex wp del <name>`
+- `!alex wp list`
+- `!alex safety on|off`
 - `!alex status`
 - `!alex tick`
+
+## Built-in behavior upgrades
+
+- Safety loop before each LLM plan:
+  - auto-eat when hungry/weak and food exists
+  - panic flee when low health and hostiles are near
+- Autonomy loop (when `autonomy.enabled=true` and mode is `auto`):
+  - sets home waypoint
+  - gathers wood
+  - crafts planks/sticks/tools/table/furnace/torches
+  - mines stone/coal
+  - patrols around home
+- Persistent waypoints:
+  - saved to `data/waypoints.json`
+  - usable from owner commands and LLM waypoint actions
+- LLM action support includes:
+  - `craft_item`
+  - `place_block`
+  - `eat_food`
+  - `flee_hostiles`
+  - `goto_waypoint`
+  - `set_waypoint`
+  - `delete_waypoint`

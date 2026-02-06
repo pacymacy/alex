@@ -54,6 +54,7 @@ export async function loadConfig(customPath) {
   }
 
   const mc = isRecord(parsed.minecraft) ? parsed.minecraft : {};
+  const autonomy = isRecord(parsed.autonomy) ? parsed.autonomy : {};
   const llm = isRecord(parsed.llm) ? parsed.llm : {};
 
   return {
@@ -66,6 +67,10 @@ export async function loadConfig(customPath) {
     },
     ownerUsername: asNonEmptyString(parsed.ownerUsername, "alex"),
     initialGoal: asNonEmptyString(parsed.initialGoal, "Collect wood and stay safe."),
+    autonomy: {
+      enabled: asBoolean(autonomy.enabled, true),
+      goalMode: normalizeGoalMode(autonomy.goalMode)
+    },
     loopIntervalMs: asInteger(parsed.loopIntervalMs, 4500, 1000, 60000),
     maxActionsPerTick: asInteger(parsed.maxActionsPerTick, 3, 1, 8),
     chatCooldownMs: asInteger(parsed.chatCooldownMs, 4000, 500, 60000),
@@ -104,12 +109,24 @@ function asNumber(value, fallback, min, max) {
   return clamp(num, min, max);
 }
 
+function asBoolean(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return fallback;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, "");
+}
+
+function normalizeGoalMode(value) {
+  const mode = asString(value, "").trim().toLowerCase();
+  return mode === "manual" ? "manual" : "auto";
 }
 
 function normalizeLlmConfig(llm) {

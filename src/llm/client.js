@@ -299,6 +299,62 @@ function normalizeAction(action) {
         durationMs: toInt(action.durationMs, 4000, 500, 30000)
       };
     }
+    case "craft_item": {
+      const item = asString(action.item, "").trim().toLowerCase();
+      if (!item) {
+        return null;
+      }
+      return {
+        type: "craft_item",
+        item,
+        count: toInt(action.count, 1, 1, 64)
+      };
+    }
+    case "place_block": {
+      const block = asString(action.block, "").trim().toLowerCase();
+      if (!block) {
+        return null;
+      }
+      return {
+        type: "place_block",
+        block
+      };
+    }
+    case "eat_food":
+      return { type: "eat_food" };
+    case "flee_hostiles":
+      return {
+        type: "flee_hostiles",
+        maxDistance: toInt(action.maxDistance, 10, 3, 32),
+        fleeDistance: toInt(action.fleeDistance, 8, 3, 24),
+        durationMs: toInt(action.durationMs, 4000, 500, 30000)
+      };
+    case "goto_waypoint": {
+      const name = normalizeWaypointName(action.name);
+      if (!name) {
+        return null;
+      }
+      return {
+        type: "goto_waypoint",
+        name,
+        radius: toInt(action.radius, 2, 1, 8),
+        timeoutMs: toInt(action.timeoutMs, 25000, 1000, 60000)
+      };
+    }
+    case "set_waypoint": {
+      const name = normalizeWaypointName(action.name);
+      if (!name) {
+        return null;
+      }
+      return { type: "set_waypoint", name };
+    }
+    case "delete_waypoint": {
+      const name = normalizeWaypointName(action.name);
+      if (!name) {
+        return null;
+      }
+      return { type: "delete_waypoint", name };
+    }
     case "wait":
       return { type: "wait", ms: toInt(action.ms, 1000, 200, 15000) };
     case "stop":
@@ -376,4 +432,13 @@ function toInt(value, fallback, min, max) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeWaypointName(value) {
+  const raw = asString(value, "").trim().toLowerCase();
+  if (!raw) {
+    return "";
+  }
+
+  return raw.replace(/[^a-z0-9_-]/g, "").slice(0, 24);
 }

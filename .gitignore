@@ -3,4 +3,5 @@ node_modules/
 npm-debug.log*
 config/*.local.json
 config/local*.json
+data/waypoints.json
 .DS_Store
