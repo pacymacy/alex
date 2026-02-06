@@ -1,0 +1,41 @@
+{
+  "minecraft": {
+    "host": "127.0.0.1",
+    "port": 25565,
+    "username": "alex_bot",
+    "auth": "offline",
+    "version": ""
+  },
+  "ownerUsername": "your_minecraft_username",
+  "initialGoal": "Collect wood and stay safe.",
+  "loopIntervalMs": 4500,
+  "maxActionsPerTick": 3,
+  "chatCooldownMs": 4000,
+  "llm": {
+    "providerOrder": ["openrouter", "gemini", "openai"],
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "openai/gpt-4o-mini",
+      "apiKey": "REPLACE_WITH_OPENROUTER_API_KEY",
+      "siteUrl": "https://example.com",
+      "appName": "alex-minecraft-bot"
+    },
+    "gemini": {
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "gemini-2.5-flash",
+      "apiKey": "REPLACE_WITH_GEMINI_API_KEY",
+      "siteUrl": "",
+      "appName": ""
+    },
+    "openai": {
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4.1-mini",
+      "apiKey": "REPLACE_WITH_OPENAI_API_KEY",
+      "siteUrl": "",
+      "appName": ""
+    },
+    "temperature": 0.2,
+    "maxTokens": 320,
+    "timeoutMs": 20000
+  }
+}
