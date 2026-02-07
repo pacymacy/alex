@@ -11,7 +11,8 @@
     "start": "node src/index.js",
     "start:config": "node src/index.js config/config.local.json",
     "check": "node --check src/index.js",
-    "scan:secrets": "node scripts/scan-secrets.mjs"
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "test:scenarios": "node scripts/test-deterministic-scenarios.mjs"
   },
   "dependencies": {
     "mineflayer": "^4.34.0",

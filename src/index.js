@@ -9,7 +9,7 @@ import {
   safeChat
 } from "./minecraft/actions.js";
 import { buildObservation } from "./minecraft/observe.js";
-import { buildAutonomyPlan } from "./runtime/autonomy.js";
+import { buildAutonomyPlan, listPersonalities } from "./runtime/autonomy.js";
 import { loadWaypoints, saveWaypoints } from "./runtime/waypoints.js";
 
 const { Movements, pathfinder } = pathfinderPkg;
@@ -17,6 +17,7 @@ const { Movements, pathfinder } = pathfinderPkg;
 const config = await loadConfig(process.argv[2]);
 const planner = createPlannerClient(config.llm);
 const initialWaypoints = await loadWaypointsSafe();
+const initialPersonality = buildInitialPersonalityState(config);
 
 const bot = mineflayer.createBot({
   host: config.minecraft.host,
@@ -40,7 +41,8 @@ const state = {
   chatLog: [],
   lastPlanSummary: "",
   waypoints: initialWaypoints,
-  safetyEnabled: true
+  safetyEnabled: true,
+  personality: initialPersonality
 };
 
 let loopHandle = null;
@@ -53,6 +55,9 @@ bot.once("spawn", async () => {
   console.log(`[alex] Loaded waypoints: ${Object.keys(state.waypoints).length}`);
   console.log(
     `[alex] autonomy=${state.autonomyEnabled} goalMode=${state.goalMode} safety=${state.safetyEnabled}`
+  );
+  console.log(
+    `[alex] personality=${state.personality.active} stage=${state.personality.stage} policyHash=${state.personality.policyHash}`
   );
 
   await safeChat(bot, state, 0, "alex online. type !alex help");
@@ -164,11 +169,12 @@ async function runPlannedActions(source, plan) {
   const results = await executeActions(bot, plan.actions, actionContext());
   const successCount = results.filter((entry) => entry.ok).length;
   const failureCount = results.length - successCount;
+  const reasonSummary = summarizeReasonCodes(results);
 
   console.log(
-    `[alex] Tick ${state.tickCount} ${source} plan: "${String(
+    `[alex] Tick ${state.tickCount} ${source} plan persona=${state.personality.active} stage=${state.personality.stage} policyHash=${state.personality.policyHash} "${String(
       plan.summary ?? ""
-    ).slice(0, 120)}" actions=${plan.actions.length} ok=${successCount} fail=${failureCount}`
+    ).slice(0, 120)}" actions=${plan.actions.length} ok=${successCount} fail=${failureCount} reasons=${reasonSummary}`
   );
 
   return successCount > 0;
@@ -224,6 +230,10 @@ async function handleOwnerCommand(rawMessage) {
     case "mode":
       await handleModeCommand(args);
       break;
+    case "persona":
+    case "personality":
+      await handlePersonaCommand(args);
+      break;
     case "wp":
     case "waypoint":
       await handleWaypointCommand(args);
@@ -253,7 +263,7 @@ async function sendOwnerHelp() {
     bot,
     state,
     0,
-    "[alex] commands: help | pause | resume | goal <text> | mission <text> | auto on/off | mode auto/manual | wp set/goto/del/list <name> | safety on/off | status | tick"
+    "[alex] commands: help | pause | resume | goal <text> | mission <text> | auto on/off | mode auto/manual | persona [list|set <name>|stage|lock|unlock] | wp set/goto/del/list <name> | safety on/off | status | tick"
   );
 }
 
@@ -261,7 +271,7 @@ function buildStatusLine() {
   const hostileCount = findNearbyHostiles(bot, 12).length;
   const waypointCount = Object.keys(state.waypoints).length;
 
-  return `[alex] paused=${state.paused} safety=${state.safetyEnabled} auto=${state.autonomyEnabled} mode=${state.goalMode} hp=${round(
+  return `[alex] paused=${state.paused} safety=${state.safetyEnabled} auto=${state.autonomyEnabled} mode=${state.goalMode} persona=${state.personality.active} stage=${state.personality.stage} hp=${round(
     bot.health
   )} food=${round(bot.food)} hostiles=${hostileCount} waypoints=${waypointCount} tick=${state.tickCount} goal="${state.goal}"`;
 }
@@ -295,6 +305,24 @@ function round(value) {
     return 0;
   }
   return Math.round(num * 100) / 100;
+}
+
+function summarizeReasonCodes(results) {
+  const counts = {};
+  for (const result of results) {
+    if (result?.ok) {
+      continue;
+    }
+    const code = String(result?.reasonCode ?? "UNKNOWN_ERROR");
+    counts[code] = (counts[code] ?? 0) + 1;
+  }
+
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) {
+    return "none";
+  }
+
+  return entries.map(([code, count]) => `${code}:${count}`).join(",");
 }
 
 function setGoal(rawGoal) {
@@ -452,6 +480,83 @@ async function handleModeCommand(args) {
   await safeChat(bot, state, 0, `[alex] goalMode=${state.goalMode}`);
 }
 
+async function handlePersonaCommand(args) {
+  const text = String(args ?? "").trim();
+  if (!text) {
+    await safeChat(
+      bot,
+      state,
+      0,
+      `[alex] persona=${state.personality.active} stage=${state.personality.stage} hotSwap=${state.personality.allowHotSwap}`
+    );
+    return;
+  }
+
+  const [subRaw, ...rest] = text.split(/\s+/);
+  const sub = String(subRaw).toLowerCase();
+  const payload = rest.join(" ").trim().toLowerCase();
+
+  switch (sub) {
+    case "list":
+      await safeChat(
+        bot,
+        state,
+        0,
+        `[alex] personas: ${listPersonalities().join(", ")}`
+      );
+      return;
+    case "set": {
+      if (!payload) {
+        await safeChat(bot, state, 0, "[alex] usage: !alex persona set <name>");
+        return;
+      }
+
+      if (!state.personality.allowHotSwap) {
+        await safeChat(bot, state, 0, "[alex] persona hot-swap is locked");
+        return;
+      }
+
+      const ok = setActivePersonality(payload);
+      if (!ok) {
+        await safeChat(bot, state, 0, `[alex] unknown persona: ${payload}`);
+        return;
+      }
+
+      state.goalMode = "auto";
+      await safeChat(
+        bot,
+        state,
+        0,
+        `[alex] persona set to ${state.personality.active} stage=${state.personality.stage}`
+      );
+      return;
+    }
+    case "stage":
+      await safeChat(
+        bot,
+        state,
+        0,
+        `[alex] persona=${state.personality.active} stage=${state.personality.stage} changedAt=${state.personality.lastStageChangeAt}`
+      );
+      return;
+    case "lock":
+      state.personality.allowHotSwap = false;
+      await safeChat(bot, state, 0, "[alex] persona hot-swap locked");
+      return;
+    case "unlock":
+      state.personality.allowHotSwap = true;
+      await safeChat(bot, state, 0, "[alex] persona hot-swap unlocked");
+      return;
+    default:
+      await safeChat(
+        bot,
+        state,
+        0,
+        "[alex] persona usage: list | set <name> | stage | lock | unlock"
+      );
+  }
+}
+
 async function runManualAction(action, contextMessage) {
   if (state.busy) {
     await safeChat(bot, state, 0, "[alex] busy, try again in a moment");
@@ -467,7 +572,7 @@ async function runManualAction(action, contextMessage) {
         bot,
         state,
         0,
-        `[alex] action failed: ${first?.error ?? "unknown error"}`
+        `[alex] action failed (${first?.reasonCode ?? "UNKNOWN_ERROR"}): ${first?.error ?? "unknown error"}`
       );
       return false;
     }
@@ -533,6 +638,50 @@ async function runSafetyBehaviors() {
     }
   }
 
+  const freeSlots = estimateFreeInventorySlots(bot);
+  if (freeSlots <= 1) {
+    const cleanup = await executeActions(
+      bot,
+      [{ type: "drop_items", minFreeSlots: 4 }],
+      actionContext()
+    );
+    if (cleanup[0]?.ok) {
+      await safetyNotice("[alex] safety: clearing inventory overflow");
+      return true;
+    }
+  }
+
+  if (isNightTime(bot) && isLikelySurface(bot)) {
+    const shelterName = resolveShelterWaypointName(state);
+    if (shelterName) {
+      const shelter = state.waypoints[shelterName];
+      const shelterDistance = distanceToWaypoint(bot, shelter);
+      if (shelterDistance === null || shelterDistance > 8) {
+        const shelterMove = await executeActions(
+          bot,
+          [{ type: "goto_waypoint", name: shelterName, radius: 4, timeoutMs: 32000 }],
+          actionContext()
+        );
+        if (shelterMove[0]?.ok) {
+          await safetyNotice(`[alex] safety: night shelter -> ${shelterName}`);
+          return true;
+        }
+      }
+    }
+
+    if (countInventoryItem(bot, "torch") > 0) {
+      const torch = await executeActions(
+        bot,
+        [{ type: "place_block", block: "torch" }],
+        actionContext()
+      );
+      if (torch[0]?.ok) {
+        await safetyNotice("[alex] safety: placing night torch");
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 
@@ -569,4 +718,110 @@ function normalizeWaypointName(value) {
   }
 
   return raw.replace(/[^a-z0-9_-]/g, "").slice(0, 24);
+}
+
+function buildInitialPersonalityState(runtimeConfig) {
+  const active = String(runtimeConfig.autonomy.personality.active).toLowerCase();
+  const policy = resolvePersonalityPolicy(runtimeConfig, active);
+
+  return {
+    active,
+    allowHotSwap: runtimeConfig.autonomy.personality.allowHotSwap,
+    policy,
+    stage: active === "cave_dweller" ? "CD-0" : "BASE-0",
+    lastStageChangeAt: new Date().toISOString(),
+    policyHash: buildPolicyHash(policy)
+  };
+}
+
+function setActivePersonality(requested) {
+  const available = new Set(listPersonalities());
+  if (!available.has(requested)) {
+    return false;
+  }
+
+  const policy = resolvePersonalityPolicy(config, requested);
+  state.personality.active = requested;
+  state.personality.policy = policy;
+  state.personality.stage = requested === "cave_dweller" ? "CD-0" : "BASE-0";
+  state.personality.lastStageChangeAt = new Date().toISOString();
+  state.personality.policyHash = buildPolicyHash(policy);
+  return true;
+}
+
+function resolvePersonalityPolicy(runtimeConfig, active) {
+  if (active === "cave_dweller") {
+    return runtimeConfig.autonomy.personality.policies.cave_dweller;
+  }
+
+  return {
+    profile: "default"
+  };
+}
+
+function buildPolicyHash(value) {
+  const text = JSON.stringify(value);
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function estimateFreeInventorySlots(currentBot) {
+  if (typeof currentBot.inventory?.emptySlotCount === "function") {
+    const value = Number(currentBot.inventory.emptySlotCount());
+    if (Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value));
+    }
+  }
+
+  const used = currentBot.inventory.items().length;
+  return Math.max(0, 36 - used);
+}
+
+function isNightTime(currentBot) {
+  const timeOfDay = Number(currentBot.time?.timeOfDay ?? 0);
+  return timeOfDay >= 13000 && timeOfDay <= 23000;
+}
+
+function isLikelySurface(currentBot) {
+  const y = Number(currentBot.entity?.position?.y ?? 0);
+  return y >= 58;
+}
+
+function resolveShelterWaypointName(runtimeState) {
+  if (runtimeState.waypoints?.home_core) {
+    return "home_core";
+  }
+  if (runtimeState.waypoints?.home) {
+    return "home";
+  }
+  return "";
+}
+
+function distanceToWaypoint(currentBot, waypoint) {
+  if (!currentBot.entity?.position || !waypoint) {
+    return null;
+  }
+
+  const currentDimension = currentBot.game?.dimension ?? "unknown";
+  if (waypoint.dimension && waypoint.dimension !== currentDimension) {
+    return null;
+  }
+
+  const dx = currentBot.entity.position.x - waypoint.x;
+  const dy = currentBot.entity.position.y - waypoint.y;
+  const dz = currentBot.entity.position.z - waypoint.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function countInventoryItem(currentBot, itemName) {
+  let total = 0;
+  for (const item of currentBot.inventory.items()) {
+    if (item.name === itemName) {
+      total += item.count;
+    }
+  }
+  return total;
 }

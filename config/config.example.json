@@ -10,7 +10,26 @@
   "initialGoal": "Collect wood and stay safe.",
   "autonomy": {
     "enabled": true,
-    "goalMode": "auto"
+    "goalMode": "auto",
+    "personality": {
+      "active": "default",
+      "allowHotSwap": true
+    }
+  },
+  "personalities": {
+    "cave_dweller": {
+      "surfaceRiskTolerance": 0.2,
+      "maxSurfaceMinutesPerTrip": 6,
+      "undergroundBaseDepthTarget": 56,
+      "hostileAvoidanceWeight": 0.9,
+      "explorationWeight": 0.25,
+      "buildingWeight": 0.6,
+      "minTorchReserve": 32,
+      "minFoodReserve": 8,
+      "minCoalReserve": 12,
+      "minIronReserve": 12,
+      "preferredMission": "underground_progression"
+    }
   },
   "loopIntervalMs": 4500,
   "maxActionsPerTick": 3,
