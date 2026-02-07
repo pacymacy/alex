@@ -18,11 +18,12 @@ If the current provider fails, it falls back to the next one automatically.
 3. Edit `config/config.local.json`:
    - Set `ownerUsername`.
    - Set `minecraft.host` / `minecraft.port` / `minecraft.version` / `minecraft.auth`.
-   - Set `autonomy.enabled` and `autonomy.goalMode`.
+   - Set `autonomy.enabled`, `autonomy.goalMode`, and `autonomy.personality.active`.
    - In `llm.providerOrder`, keep your preferred API order.
    - Add your real key(s) under `llm.openrouter.apiKey`, `llm.gemini.apiKey`, or `llm.openai.apiKey`.
 4. Install deps: `npm install`
 5. Run: `npm start`
+6. Optional deterministic planner checks: `npm run test:scenarios`
 
 ## Minecraft host and port
 
@@ -62,6 +63,11 @@ Use these from the owner username configured in `config/config.local.json`:
 - `!alex mission <text>`
 - `!alex auto on|off`
 - `!alex mode auto|manual`
+- `!alex persona`
+- `!alex persona list`
+- `!alex persona set <default|cave_dweller>`
+- `!alex persona stage`
+- `!alex persona lock|unlock`
 - `!alex wp set <name>`
 - `!alex wp goto <name>`
 - `!alex wp del <name>`
@@ -75,12 +81,20 @@ Use these from the owner username configured in `config/config.local.json`:
 - Safety loop before each LLM plan:
   - auto-eat when hungry/weak and food exists
   - panic flee when low health and hostiles are near
+  - clear low-value inventory overflow when slots are critically low
+  - run night shelter fallback (return home if known, otherwise place emergency torch)
 - Autonomy loop (when `autonomy.enabled=true` and mode is `auto`):
   - sets home waypoint
   - gathers wood
   - crafts planks/sticks/tools/table/furnace/torches
   - mines stone/coal
   - patrols around home
+- Cave-dweller personality (stage CD-0 to CD-3 baseline):
+  - avoids surface at night
+  - retreats underground on surface threats
+  - prioritizes torch/coal/iron reserve and underground mining progression
+- Action execution now emits structured `reasonCode` values on failures (for example `NO_TOOL`, `NO_PATH`, `NO_DROP`, `NO_RECIPE`, `TIMEOUT`)
+- Action postconditions are enforced for `mine_block`, `craft_item`, `place_block`, `eat_food`, and `goto_waypoint`
 - Persistent waypoints:
   - saved to `data/waypoints.json`
   - usable from owner commands and LLM waypoint actions

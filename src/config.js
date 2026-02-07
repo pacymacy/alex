@@ -4,6 +4,27 @@ import path from "node:path";
 const DEFAULT_CONFIG_PATH = "config/config.local.json";
 const EXAMPLE_CONFIG_PATH = "config/config.example.json";
 const DEFAULT_PROVIDER_ORDER = ["openrouter", "gemini", "openai"];
+const PERSONALITY_DEFAULT = "default";
+const PERSONALITY_CAVE_DWELLER = "cave_dweller";
+const SUPPORTED_PERSONALITIES = new Set([
+  PERSONALITY_DEFAULT,
+  PERSONALITY_CAVE_DWELLER
+]);
+const DEFAULT_PERSONALITY_POLICIES = {
+  [PERSONALITY_CAVE_DWELLER]: {
+    surfaceRiskTolerance: 0.2,
+    maxSurfaceMinutesPerTrip: 6,
+    undergroundBaseDepthTarget: 56,
+    hostileAvoidanceWeight: 0.9,
+    explorationWeight: 0.25,
+    buildingWeight: 0.6,
+    minTorchReserve: 32,
+    minFoodReserve: 8,
+    minCoalReserve: 12,
+    minIronReserve: 12,
+    preferredMission: "underground_progression"
+  }
+};
 const PROVIDER_DEFAULTS = {
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
@@ -55,6 +76,7 @@ export async function loadConfig(customPath) {
 
   const mc = isRecord(parsed.minecraft) ? parsed.minecraft : {};
   const autonomy = isRecord(parsed.autonomy) ? parsed.autonomy : {};
+  const personalities = isRecord(parsed.personalities) ? parsed.personalities : {};
   const llm = isRecord(parsed.llm) ? parsed.llm : {};
 
   return {
@@ -69,7 +91,11 @@ export async function loadConfig(customPath) {
     initialGoal: asNonEmptyString(parsed.initialGoal, "Collect wood and stay safe."),
     autonomy: {
       enabled: asBoolean(autonomy.enabled, true),
-      goalMode: normalizeGoalMode(autonomy.goalMode)
+      goalMode: normalizeGoalMode(autonomy.goalMode),
+      personality: normalizePersonalityConfig(
+        isRecord(autonomy.personality) ? autonomy.personality : {},
+        personalities
+      )
     },
     loopIntervalMs: asInteger(parsed.loopIntervalMs, 4500, 1000, 60000),
     maxActionsPerTick: asInteger(parsed.maxActionsPerTick, 3, 1, 8),
@@ -127,6 +153,75 @@ function stripTrailingSlash(value) {
 function normalizeGoalMode(value) {
   const mode = asString(value, "").trim().toLowerCase();
   return mode === "manual" ? "manual" : "auto";
+}
+
+function normalizePersonalityConfig(autonomyPersonality, rawPersonalities) {
+  const active = normalizePersonalityName(
+    asString(autonomyPersonality.active, PERSONALITY_DEFAULT)
+  );
+  const allowHotSwap = asBoolean(autonomyPersonality.allowHotSwap, true);
+
+  return {
+    active,
+    allowHotSwap,
+    policies: {
+      [PERSONALITY_CAVE_DWELLER]: normalizeCaveDwellerPolicy(
+        rawPersonalities[PERSONALITY_CAVE_DWELLER]
+      )
+    }
+  };
+}
+
+function normalizePersonalityName(value) {
+  const name = asString(value, "").trim().toLowerCase();
+  return SUPPORTED_PERSONALITIES.has(name) ? name : PERSONALITY_DEFAULT;
+}
+
+function normalizeCaveDwellerPolicy(value) {
+  const raw = isRecord(value) ? value : {};
+  const defaults = DEFAULT_PERSONALITY_POLICIES[PERSONALITY_CAVE_DWELLER];
+
+  return {
+    surfaceRiskTolerance: asNumber(
+      raw.surfaceRiskTolerance,
+      defaults.surfaceRiskTolerance,
+      0,
+      1
+    ),
+    maxSurfaceMinutesPerTrip: asInteger(
+      raw.maxSurfaceMinutesPerTrip,
+      defaults.maxSurfaceMinutesPerTrip,
+      1,
+      60
+    ),
+    undergroundBaseDepthTarget: asInteger(
+      raw.undergroundBaseDepthTarget,
+      defaults.undergroundBaseDepthTarget,
+      16,
+      62
+    ),
+    hostileAvoidanceWeight: asNumber(
+      raw.hostileAvoidanceWeight,
+      defaults.hostileAvoidanceWeight,
+      0,
+      1
+    ),
+    explorationWeight: asNumber(
+      raw.explorationWeight,
+      defaults.explorationWeight,
+      0,
+      1
+    ),
+    buildingWeight: asNumber(raw.buildingWeight, defaults.buildingWeight, 0, 1),
+    minTorchReserve: asInteger(raw.minTorchReserve, defaults.minTorchReserve, 0, 512),
+    minFoodReserve: asInteger(raw.minFoodReserve, defaults.minFoodReserve, 0, 256),
+    minCoalReserve: asInteger(raw.minCoalReserve, defaults.minCoalReserve, 0, 512),
+    minIronReserve: asInteger(raw.minIronReserve, defaults.minIronReserve, 0, 512),
+    preferredMission: asNonEmptyString(
+      raw.preferredMission,
+      defaults.preferredMission
+    )
+  };
 }
 
 function normalizeLlmConfig(llm) {

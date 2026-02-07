@@ -32,6 +32,7 @@ export function buildObservation(bot, state) {
     },
     world: summarizeWorld(bot),
     inventory: summarizeInventory(bot),
+    inventorySlots: summarizeInventorySlots(bot),
     hasFoodInInventory: hasEdibleFood(bot),
     nearbyPlayers: summarizeNearbyPlayers(bot, position),
     nearbyMobs: summarizeNearbyMobs(bot, position),
@@ -43,6 +44,7 @@ export function buildObservation(bot, state) {
     threat: summarizeThreat(hostiles),
     nearbyBlocks: summarizeInterestingBlocks(bot, position),
     waypoints: summarizeWaypoints(state.waypoints),
+    personality: summarizePersonality(state.personality),
     recentChat: state.chatLog.slice(-10),
     lastPlanSummary: state.lastPlanSummary
   };
@@ -56,6 +58,23 @@ function summarizeInventory(bot) {
       count: item.count
     }))
     .slice(0, 20);
+}
+
+function summarizeInventorySlots(bot) {
+  const used = bot.inventory.items().length;
+  let free = Math.max(0, 36 - used);
+  if (typeof bot.inventory?.emptySlotCount === "function") {
+    const value = Number(bot.inventory.emptySlotCount());
+    if (Number.isFinite(value)) {
+      free = Math.max(0, Math.floor(value));
+    }
+  }
+
+  return {
+    used,
+    free,
+    total: used + free
+  };
 }
 
 function summarizeNearbyPlayers(bot, botPosition) {
@@ -157,6 +176,18 @@ function summarizeWorld(bot) {
     timeOfDay,
     isDay: timeOfDay >= 0 && timeOfDay < 12000,
     isNight: timeOfDay >= 13000 && timeOfDay <= 23000
+  };
+}
+
+function summarizePersonality(personality) {
+  const data =
+    personality && typeof personality === "object" ? personality : {};
+
+  return {
+    active: data.active ?? "default",
+    stage: data.stage ?? "BASE-0",
+    policyHash: data.policyHash ?? "00000000",
+    allowHotSwap: Boolean(data.allowHotSwap)
   };
 }
 
